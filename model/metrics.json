@@ -1,0 +1,15 @@
+{
+  "n_real": 91,
+  "n_fake": 92,
+  "accuracy": 0.9508196721311475,
+  "roc_auc": 0.9946249402771141,
+  "accuracy_noisy": 0.907103825136612,
+  "accuracy_mp3": 0.8961748633879781,
+  "accuracy_phone": 0.9289617486338798,
+  "confusion": {
+    "real_ok": 89,
+    "real_as_fake": 2,
+    "fake_as_real": 7,
+    "fake_ok": 85
+  }
+}

@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# بيانات الصوت (كبيرة — ما ترفع على GitHub)
+dataset/
+*.wav
+*.mp3
+*.flac
+*.ogg
+
+# ملفات تنتج وقت التشغيل
+results.csv
+temp*.wav
+
+# النظام
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fake Voice Detection</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Crect width=%2224%22 height=%2224%22 rx=%226%22 fill=%22%235b8cff%22/%3E%3Cpath d=%22M7 8v8M11 5v14M15 9v6%22 stroke=%22white%22 stroke-width=%222%22 stroke-linecap=%22round%22/%3E%3C/svg%3E">
+<style>
+  :root{
+    --bg:#0b1120; --panel:#111a2e; --panel-2:#16213a; --line:#24314f;
+    --text:#e6ebf5; --muted:#8b97b3; --accent:#5b8cff; --accent-2:#7c5cff;
+    --real:#22c08a; --fake:#ff5d6c; --warn:#f5b041; --radius:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:radial-gradient(1200px 600px at 10% -10%,#1b2a55 0%,transparent 60%),radial-gradient(900px 500px at 110% 10%,#2a1b55 0%,transparent 55%),var(--bg);
+       color:var(--text);font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;display:flex;justify-content:center;padding:40px 16px}
+  .wrap{width:100%;max-width:620px}
+  header{text-align:center;margin-bottom:26px}
+  .logo{width:54px;height:54px;border-radius:14px;margin:0 auto 12px;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent-2));box-shadow:0 10px 30px rgba(91,140,255,.35)}
+  h1{margin:0;font-size:26px;font-weight:650;letter-spacing:.2px}
+  .sub{color:var(--muted);margin-top:6px;font-size:14px}
+  .card{background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,0)),var(--panel);border:1px solid var(--line);border-radius:22px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+  .tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--panel-2);padding:5px;border-radius:12px;margin-bottom:20px}
+  .tab{border:0;background:transparent;color:var(--muted);padding:10px;border-radius:9px;font:inherit;font-weight:600;cursor:pointer;transition:.2s}
+  .tab.active{background:var(--accent);color:#fff;box-shadow:0 6px 18px rgba(91,140,255,.35)}
+  .drop{border:1.5px dashed #34446b;border-radius:var(--radius);padding:22px;text-align:center;cursor:pointer;transition:.2s;background:rgba(255,255,255,.015);position:relative}
+  .drop:hover,.drop.over{border-color:var(--accent);background:rgba(91,140,255,.06)}
+  .drop .big{font-weight:600}
+  .drop .small{color:var(--muted);font-size:13px;margin-top:4px}
+  .drop.has-file{border-style:solid;border-color:#2f4a86;text-align:left;padding:14px}
+  .file-row{display:flex;align-items:center;gap:10px}
+  .file-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+  .file-meta{color:var(--muted);font-size:12px}
+  .x{border:0;background:#24314f;color:var(--text);width:28px;height:28px;border-radius:8px;cursor:pointer}
+  canvas.wave{width:100%;height:56px;display:block;margin-top:10px}
+  audio{width:100%;margin-top:8px;height:34px}
+  .or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;margin:12px 0}
+  .or:before,.or:after{content:"";flex:1;height:1px;background:var(--line)}
+  .btn{width:100%;border:0;border-radius:12px;padding:13px;font:inherit;font-weight:650;cursor:pointer;transition:.2s;color:#fff}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent-2));margin-top:16px}
+  .btn-primary:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 10px 26px rgba(91,140,255,.35)}
+  .btn-rec{background:var(--panel-2);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;gap:8px}
+  .btn-rec.recording{background:rgba(255,93,108,.15);border-color:var(--fake);color:#ffd0d5}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--fake)}
+  .recording .dot{animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.25}}
+  .pair{display:grid;gap:12px}
+  .label{font-size:12px;color:var(--muted);margin:0 0 6px 2px;font-weight:600;text-transform:uppercase;letter-spacing:.6px}
+  .result{margin-top:18px;border-radius:var(--radius);padding:18px;border:1px solid var(--line);background:var(--panel-2);display:none;animation:fade .3s}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}}
+  .verdict{display:flex;align-items:center;gap:14px}
+  .badge{font-weight:800;font-size:22px;letter-spacing:1px;padding:6px 14px;border-radius:10px}
+  .badge.REAL{background:rgba(34,192,138,.15);color:var(--real)}
+  .badge.FAKE{background:rgba(255,93,108,.15);color:var(--fake)}
+  .verdict-text{color:var(--muted);font-size:14px}
+  .meter{margin-top:16px}
+  .meter-bar{height:10px;border-radius:6px;background:linear-gradient(90deg,var(--real),#9ccf5a 35%,var(--warn) 50%,#ff8a5c 65%,var(--fake));position:relative}
+  .meter-pin{position:absolute;top:-5px;width:4px;height:20px;border-radius:2px;background:#fff;box-shadow:0 0 0 3px rgba(0,0,0,.35);transition:left .6s cubic-bezier(.2,.8,.2,1)}
+  .meter-scale{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px}
+  .note{margin-top:12px;font-size:13px;padding:10px 12px;border-radius:10px;background:rgba(245,176,65,.1);color:#f8d48f;border:1px solid rgba(245,176,65,.25)}
+  .error{background:rgba(255,93,108,.1);color:#ffc2c8;border-color:rgba(255,93,108,.3)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .mini{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+  .mini .t{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mini .v{font-weight:700;margin-top:4px}
+  .sim{font-size:40px;font-weight:800;line-height:1}
+  .spinner{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .8s linear infinite;vertical-align:-3px;margin-right:8px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .history{margin-top:22px}
+  .history h3{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:0 0 8px}
+  .h-item{display:flex;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:10px;background:var(--panel);border:1px solid var(--line);margin-bottom:6px;font-size:13px}
+  .h-item span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .REALc{color:var(--real);font-weight:700}.FAKEc{color:var(--fake);font-weight:700}
+  footer{text-align:center;color:var(--muted);font-size:12px;margin-top:18px;line-height:1.7}
+  .hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2M21 12h0"/></svg>
+    </div>
+    <h1>Fake Voice Detection</h1>
+    <div class="sub">Find out whether a voice is real or AI-generated, or compare two voices.</div>
+  </header>
+
+  <div class="card">
+    <div class="tabs">
+      <button class="tab active" data-tab="single">Analyze a voice</button>
+      <button class="tab" data-tab="compare">Compare two voices</button>
+    </div>
+
+    <!-- ============ ANALYZE ============ -->
+    <section id="single">
+      <div class="drop" data-slot="s"></div>
+      <div class="or">or</div>
+      <button class="btn btn-rec" id="recBtn"><span class="dot"></span><span id="recText">Record with microphone</span></button>
+      <button class="btn btn-primary" id="analyzeBtn" disabled>Analyze voice</button>
+      <div class="result" id="singleResult"></div>
+    </section>
+
+    <!-- ============ COMPARE ============ -->
+    <section id="compare" class="hidden">
+      <div class="pair">
+        <div><div class="label">First voice</div><div class="drop" data-slot="a"></div></div>
+        <div><div class="label">Second voice</div><div class="drop" data-slot="b"></div></div>
+      </div>
+      <button class="btn btn-primary" id="compareBtn" disabled>Compare voices</button>
+      <div class="result" id="compareResult"></div>
+    </section>
+
+    <div class="history hidden" id="history"><h3>This session</h3><div id="historyList"></div></div>
+  </div>
+
+  <footer>
+    Supported: WAV, MP3, FLAC, OGG · up to 25 MB · best with 3–20 seconds of clear speech<br>
+    <span id="modelInfo"></span>
+  </footer>
+</div>
+
+<script>
+const ACCEPT = ".wav,.mp3,.flac,.ogg";
+const files = { s: null, a: null, b: null };
+const $ = id => document.getElementById(id);
+
+/* ---------- tabs ---------- */
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
+  $("single").classList.toggle("hidden", t.dataset.tab !== "single");
+  $("compare").classList.toggle("hidden", t.dataset.tab !== "compare");
+});
+
+/* ---------- drop zones ---------- */
+function renderDrop(el) {
+  const slot = el.dataset.slot, f = files[slot];
+  el.classList.toggle("has-file", !!f);
+  if (!f) {
+    el.innerHTML = `<div class="big">Drop an audio file here</div><div class="small">or click to choose a file</div>`;
+    return;
+  }
+  const url = URL.createObjectURL(f);
+  el.innerHTML = `<div class="file-row"><div class="file-name">${escapeHtml(f.name)}</div>
+      <span class="file-meta">${(f.size / 1024 / 1024).toFixed(2)} MB</span>
+      <button class="x" title="Remove">✕</button></div>
+    <canvas class="wave"></canvas><audio controls src="${url}"></audio>`;
+  el.querySelector(".x").onclick = e => { e.stopPropagation(); files[slot] = null; renderDrop(el); refresh(); };
+  el.querySelector("audio").onclick = e => e.stopPropagation();
+  drawWave(f, el.querySelector("canvas"));
+}
+
+document.querySelectorAll(".drop").forEach(el => {
+  const input = Object.assign(document.createElement("input"), { type: "file", accept: ACCEPT, hidden: true });
+  document.body.appendChild(input);
+  el.onclick = e => { if (!e.target.closest("audio,.x")) input.click(); };
+  input.onchange = () => { if (input.files[0]) setFile(el, input.files[0]); input.value = ""; };
+  el.ondragover = e => { e.preventDefault(); el.classList.add("over"); };
+  el.ondragleave = () => el.classList.remove("over");
+  el.ondrop = e => { e.preventDefault(); el.classList.remove("over"); if (e.dataTransfer.files[0]) setFile(el, e.dataTransfer.files[0]); };
+  renderDrop(el);
+});
+
+function setFile(el, f) { files[el.dataset.slot] = f; renderDrop(el); refresh(); }
+function refresh() {
+  $("analyzeBtn").disabled = !files.s;
+  $("compareBtn").disabled = !(files.a && files.b);
+}
+
+/* ---------- waveform ---------- */
+async function drawWave(file, canvas) {
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width = canvas.clientWidth * devicePixelRatio, h = canvas.height = canvas.clientHeight * devicePixelRatio;
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = await ac.decodeAudioData(await file.arrayBuffer());
+    ac.close();
+    const data = buf.getChannelData(0), bars = Math.floor(w / (4 * devicePixelRatio)), step = Math.floor(data.length / bars);
+    const peaks = [];
+    for (let i = 0; i < bars; i++) { let m = 0; for (let j = i * step; j < (i + 1) * step; j += 8) m = Math.max(m, Math.abs(data[j] || 0)); peaks.push(m); }
+    const top = Math.max(...peaks) || 1, bw = w / bars;
+    const g = ctx.createLinearGradient(0, 0, w, 0); g.addColorStop(0, "#5b8cff"); g.addColorStop(1, "#7c5cff");
+    ctx.fillStyle = g;
+    peaks.forEach((p, i) => { const bh = Math.max(2, (p / top) * h * 0.9); ctx.fillRect(i * bw, (h - bh) / 2, bw * 0.6, bh); });
+  } catch { canvas.remove(); }
+}
+
+/* ---------- microphone recording (saved as WAV in the browser) ---------- */
+let rec = null;
+$("recBtn").onclick = async () => {
+  if (rec) return stopRec();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const ac = new AudioContext(), src = ac.createMediaStreamSource(stream), proc = ac.createScriptProcessor(4096, 1, 1), chunks = [];
+    proc.onaudioprocess = e => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+    src.connect(proc); proc.connect(ac.destination);
+    const start = Date.now();
+    rec = { stream, ac, proc, chunks, timer: setInterval(() => $("recText").textContent = `Recording… ${((Date.now() - start) / 1000).toFixed(0)}s — click to stop`, 250) };
+    $("recBtn").classList.add("recording");
+  } catch { showError($("singleResult"), "Microphone access was blocked. Allow it in the browser and try again."); }
+};
+function stopRec() {
+  const { stream, ac, proc, chunks, timer } = rec; rec = null;
+  clearInterval(timer); proc.disconnect(); stream.getTracks().forEach(t => t.stop());
+  const sr = ac.sampleRate; ac.close();
+  $("recBtn").classList.remove("recording"); $("recText").textContent = "Record with microphone";
+  const len = chunks.reduce((n, c) => n + c.length, 0), pcm = new Float32Array(len);
+  let o = 0; chunks.forEach(c => { pcm.set(c, o); o += c.length; });
+  const f = new File([encodeWav(pcm, sr)], `recording-${new Date().toLocaleTimeString().replace(/:/g, "-")}.wav`, { type: "audio/wav" });
+  setFile(document.querySelector('[data-slot="s"]'), f);
+}
+function encodeWav(s, sr) {
+  const b = new ArrayBuffer(44 + s.length * 2), v = new DataView(b), w = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, "RIFF"); v.setUint32(4, 36 + s.length * 2, true); w(8, "WAVE"); w(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  w(36, "data"); v.setUint32(40, s.length * 2, true);
+  s.forEach((x, i) => v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, x)) * 0x7fff, true));
+  return b;
+}
+
+/* ---------- API calls ---------- */
+async function post(url, form, box, btn, label) {
+  btn.disabled = true; btn.innerHTML = `<span class="spinner"></span>${label}…`;
+  box.style.display = "block"; box.className = "result"; box.innerHTML = `<span class="verdict-text">Working on it…</span>`;
+  try {
+    const res = await fetch(url, { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || `Server error ${res.status}`);
+    return data;
+  } catch (e) {
+    showError(box, e.message.includes("fetch") ? "Can't reach the server. Is app.py running?" : e.message);
+    return null;
+  } finally { btn.innerHTML = label; refresh(); }
+}
+
+$("analyzeBtn").onclick = async () => {
+  const fd = new FormData(); fd.append("file", files.s);
+  const box = $("singleResult"), d = await post("/api/analyze", fd, box, $("analyzeBtn"), "Analyze voice");
+  if (!d) return;
+  const text = d.result === "REAL" ? "This sounds like a real human voice." : "This voice looks AI-generated or synthetic.";
+  box.innerHTML = `
+    <div class="verdict"><span class="badge ${d.result}">${d.result}</span>
+      <div><div style="font-weight:650">${d.confidence}% confidence</div><div class="verdict-text">${text}</div></div></div>
+    ${meter(d.fake_probability)}
+    ${d.uncertain ? `<div class="note">The model is unsure about this one (close to 50/50). Try a longer or cleaner recording.</div>` : ""}`;
+  setTimeout(() => box.querySelector(".meter-pin").style.left = `calc(${d.fake_probability}% - 2px)`, 30);
+  addHistory(files.s.name, d.result, d.confidence);
+};
+
+$("compareBtn").onclick = async () => {
+  const fd = new FormData(); fd.append("file1", files.a); fd.append("file2", files.b);
+  const box = $("compareResult"), d = await post("/api/compare", fd, box, $("compareBtn"), "Compare voices");
+  if (!d) return;
+  const v = r => `<span class="${r.result}c">${r.result}</span> · ${r.confidence}%`;
+  box.innerHTML = `
+    <div class="verdict"><div class="sim">${d.similarity}%</div>
+      <div><div style="font-weight:650">Voice similarity</div>
+      <div class="verdict-text">${d.same_speaker_likely ? "These are probably the same speaker." : "These are probably different speakers."}</div></div></div>
+    <div class="grid2">
+      <div class="mini"><div class="t">${escapeHtml(files.a.name)}</div><div class="v">${v(d.voice1)}</div></div>
+      <div class="mini"><div class="t">${escapeHtml(files.b.name)}</div><div class="v">${v(d.voice2)}</div></div>
+    </div>
+    <div class="note" style="background:rgba(91,140,255,.08);color:#b9c8ef;border-color:rgba(91,140,255,.25)">Similarity is an estimate based on voice characteristics. It is not a forensic speaker match.</div>`;
+};
+
+function meter(p) {
+  return `<div class="meter"><div class="meter-bar"><div class="meter-pin" style="left:calc(50% - 2px)"></div></div>
+    <div class="meter-scale"><span>Real</span><span>Fake probability: ${p}%</span><span>Fake</span></div></div>`;
+}
+function showError(box, msg) { box.style.display = "block"; box.className = "result note error"; box.textContent = "⚠️ " + msg; }
+function addHistory(name, result, conf) {
+  $("history").classList.remove("hidden");
+  const row = document.createElement("div"); row.className = "h-item";
+  row.innerHTML = `<span>${escapeHtml(name)}</span><span><span class="${result}c">${result}</span> ${conf}%</span>`;
+  $("historyList").prepend(row);
+}
+function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+/* ---------- model info ---------- */
+fetch("/api/info").then(r => r.json()).then(m => {
+  if (m.accuracy) $("modelInfo").textContent =
+    `Model accuracy on unseen voices: ${(m.accuracy * 100).toFixed(1)}% · trained on ${m.n_real} real + ${m.n_fake} fake clips`;
+}).catch(() => {});
+</script>
+</body>
+</html>
