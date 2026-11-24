@@ -1,12 +1,12 @@
 """
-train.py — تدريب نموذج كشف الصوت المزيّف
+train.py - Train and evaluate the fake voice detection model.
 
-التشغيل:
-    python train.py              # تدريب + تقييم صادق (Cross-Validation)
-    python train.py --no-cv      # تدريب سريع بدون تقييم
+Usage:
+    python train.py              # grouped cross-validation, then final training
+    python train.py --no-cv      # final training only
 
-المدخلات:  dataset/REAL  و  dataset/FAKE   (wav / mp3 / flac / ogg)
-المخرجات: model/voice_model.joblib  و  model/metrics.json
+Input:   dataset/REAL and dataset/FAKE  (wav / mp3 / flac / ogg)
+Output:  model/voice_model.joblib and model/metrics.json
 """
 import os
 import re
@@ -38,13 +38,13 @@ METRICS_PATH = os.path.join("model", "metrics.json")
 
 
 # ----------------------------------------------------------
-# 1) جمع الملفات — بدون تكرار
+# 1) Collect files without duplicates
 # ----------------------------------------------------------
 def collect_files(folder):
     """
-    يتجاهل:
-      - النسخ المكبّرة القديمة (_fast / _slow / _noisy) لأن التكبير صار يصير داخل التدريب
-      - نسخة mp3 إذا فيه wav بنفس الاسم (نفس الصوت مرتين = غش في التقييم)
+    Skips:
+      - pre-augmented copies (_fast / _slow / _noisy); augmentation happens during training
+      - an mp3 when a wav with the same name exists (the same clip twice would leak into evaluation)
     """
     by_stem = {}
     for name in sorted(os.listdir(folder)):
@@ -59,8 +59,8 @@ def collect_files(folder):
 
 def voice_group(path, label, idx):
     """
-    نجمع ملفات نفس الصوت/المصدر في مجموعة وحدة، عشان التقييم يختبر النموذج
-    على أصوات ما سمعها أبدًا (هذا الاختبار الحقيقي).
+    Group clips by voice/source so cross-validation always tests on voices
+    the model has never heard.
     """
     if label == 0:
         return f"real_{idx // 6}"
@@ -78,7 +78,7 @@ def voice_group(path, label, idx):
 
 
 # ----------------------------------------------------------
-# 2) النموذج: تصويت بين 3 نماذج مختلفة
+# 2) Model: soft-voting ensemble of three classifiers
 # ----------------------------------------------------------
 def build_model():
     return VotingClassifier(
@@ -99,14 +99,14 @@ def safe_extract(path, seed):
     try:
         return F.features_with_augmentations(path, seed)
     except Exception as e:
-        print(f"  ⚠️ تم تجاهل {os.path.basename(path)}: {e}")
+        print(f"  skipped {os.path.basename(path)}: {e}")
         return None
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dataset", default="dataset")
-    ap.add_argument("--no-cv", action="store_true", help="تدريب بدون تقييم")
+    ap.add_argument("--no-cv", action="store_true", help="skip cross-validation")
     ap.add_argument("--jobs", type=int, default=-1)
     args = ap.parse_args()
 
@@ -114,12 +114,12 @@ def main():
     fake = collect_files(os.path.join(args.dataset, "FAKE"))
     files = real + fake
     labels = np.array([0] * len(real) + [1] * len(fake))
-    print(f"📂 REAL: {len(real)} ملف   |   FAKE: {len(fake)} ملف  (بعد حذف التكرار والنسخ المكبّرة القديمة)")
+    print(f"REAL: {len(real)} files | FAKE: {len(fake)} files (after removing duplicates)")
     if len(real) < 5 or len(fake) < 5:
-        sys.exit("❌ لازم يكون فيه 5 ملفات على الأقل في كل من REAL و FAKE")
+        sys.exit("At least 5 files are required in both dataset/REAL and dataset/FAKE")
 
     t = time.time()
-    print("🔄 استخراج الخصائص (الأصلي + 5 نسخ معدّلة لكل ملف)...")
+    print("Extracting features (clean + 5 augmented versions per file)...")
     res = Parallel(n_jobs=args.jobs)(delayed(safe_extract)(f, i) for i, f in enumerate(files))
     keep = [i for i, r in enumerate(res) if r is not None]
     files = [files[i] for i in keep]
@@ -127,24 +127,24 @@ def main():
     res = [res[i] for i in keep]
     keys = list(res[0].keys())
     feats = {k: np.stack([r[k] for r in res]) for k in keys}
-    print(f"✅ تم في {time.time() - t:.0f} ثانية — {len(files)} ملف × {len(keys)} نسخ × {F.N_FEATURES} خاصية")
+    print(f"Done in {time.time() - t:.0f}s: {len(files)} files x {len(keys)} versions x {F.N_FEATURES} features")
 
     groups = np.array([voice_group(f, l, i) for i, (f, l) in enumerate(zip(files, labels))])
     metrics = {"n_real": int((labels == 0).sum()), "n_fake": int((labels == 1).sum())}
 
     # ------------------------------------------------------
-    # 3) تقييم صادق: كل مرة نخبّي مجموعة أصوات كاملة عن النموذج
+    # 3) Grouped cross-validation: each fold holds out entire voices
     # ------------------------------------------------------
     if not args.no_cv:
         n_splits = min(5, len(set(groups[labels == 1])), len(set(groups[labels == 0])))
-        print(f"\n🧪 تقييم على أصوات ما شافها النموذج ({n_splits}-fold)...")
+        print(f"\nEvaluating on unseen voices ({n_splits}-fold grouped CV)...")
         cv = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=42)
         probs = {k: np.zeros(len(files)) for k in ("clean", "noise", "mp3", "phone")}
         for fold, (tr, te) in enumerate(cv.split(files, labels, groups), 1):
             m = build_model().fit(stack(feats, tr, keys), np.tile(labels[tr], len(keys)))
             for k in probs:
                 probs[k][te] = m.predict_proba(feats[k][te])[:, 1]
-            print(f"   fold {fold}: دقة = {accuracy_score(labels[te], probs['clean'][te] > 0.5) * 100:.1f}%")
+            print(f"   fold {fold}: accuracy = {accuracy_score(labels[te], probs['clean'][te] > 0.5) * 100:.1f}%")
 
         p = probs["clean"]
         tn, fp, fn, tp = confusion_matrix(labels, p > 0.5).ravel()
@@ -156,24 +156,24 @@ def main():
             "accuracy_phone": float(accuracy_score(labels, probs["phone"] > 0.5)),
             "confusion": {"real_ok": int(tn), "real_as_fake": int(fp), "fake_as_real": int(fn), "fake_ok": int(tp)},
         })
-        print("\n📊 النتائج (على أصوات جديدة):")
-        print(f"   الدقة:                 {metrics['accuracy'] * 100:.1f}%")
+        print("\nResults on unseen voices:")
+        print(f"   Accuracy:              {metrics['accuracy'] * 100:.1f}%")
         print(f"   ROC-AUC:               {metrics['roc_auc']:.3f}")
-        print(f"   الدقة مع ضوضاء:        {metrics['accuracy_noisy'] * 100:.1f}%")
-        print(f"   الدقة بعد ضغط MP3:     {metrics['accuracy_mp3'] * 100:.1f}%")
-        print(f"   الدقة بجودة مكالمة:    {metrics['accuracy_phone'] * 100:.1f}%")
-        print(f"   حقيقي اعتُبر مزيّف: {fp}   |   مزيّف اعتُبر حقيقي: {fn}")
+        print(f"   Accuracy (noise):      {metrics['accuracy_noisy'] * 100:.1f}%")
+        print(f"   Accuracy (MP3):        {metrics['accuracy_mp3'] * 100:.1f}%")
+        print(f"   Accuracy (phone band): {metrics['accuracy_phone'] * 100:.1f}%")
+        print(f"   Real classified as fake: {fp} | Fake classified as real: {fn}")
         wrong = [os.path.basename(files[i]) for i in np.where((p > 0.5) != labels)[0]]
         if wrong:
-            print("   الملفات اللي غلط فيها:", ", ".join(wrong))
+            print("   Misclassified:", ", ".join(wrong))
 
     # ------------------------------------------------------
-    # 4) التدريب النهائي على كل البيانات
+    # 4) Final training on all data
     # ------------------------------------------------------
-    print("\n🚀 التدريب النهائي على كل البيانات...")
+    print("\nTraining final model on all data...")
     model = build_model().fit(stack(feats, np.arange(len(files)), keys), np.tile(labels, len(keys)))
     os.makedirs("model", exist_ok=True)
-    # إحصائيات "بصمة المتحدث" لاستخدامها في مقارنة صوتين
+    # background statistics for normalizing speaker embeddings in voice comparison
     from detector import _SPK_IDX
     spk = feats["clean"][:, _SPK_IDX]
     joblib.dump({
@@ -182,7 +182,7 @@ def main():
     }, MODEL_PATH)
     with open(METRICS_PATH, "w", encoding="utf-8") as f:
         json.dump(metrics, f, ensure_ascii=False, indent=2)
-    print(f"💾 تم حفظ النموذج في {MODEL_PATH}")
+    print(f"Model saved to {MODEL_PATH}")
 
 
 if __name__ == "__main__":

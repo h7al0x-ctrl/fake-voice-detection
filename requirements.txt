@@ -1,4 +1,4 @@
-# إصدارات مجرّبة ومثبّتة — تغييرها ممكن يغيّر النتائج
+# Pinned, tested versions. Changing them can change the extracted features and results.
 flask==3.1.2
 librosa==0.11.0
 numba==0.62.0

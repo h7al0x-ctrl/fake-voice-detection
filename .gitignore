@@ -4,18 +4,18 @@ __pycache__/
 venv/
 .venv/
 
-# بيانات الصوت (كبيرة — ما ترفع على GitHub)
+# Audio data (too large for the repository)
 dataset/
 *.wav
 *.mp3
 *.flac
 *.ogg
 
-# ملفات تنتج وقت التشغيل
+# Runtime output
 results.csv
 temp*.wav
 
-# النظام
+# OS files
 .DS_Store
 Thumbs.db
 desktop.ini

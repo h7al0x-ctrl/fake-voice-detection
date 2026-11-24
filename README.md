@@ -1,103 +1,102 @@
-# 🎙️ Fake Voice Detection
+# Fake Voice Detection
 
-Detects whether a voice recording is **real (human)** or **fake (AI-generated)**, and compares two voices. Built with Python, librosa, scikit-learn and Flask.
-
-نظام يكشف إذا كان الصوت **حقيقي** أو **مولّد بالذكاء الاصطناعي**، ويقارن بين صوتين.
+A machine learning system that classifies speech recordings as **real (human)** or **fake (AI-generated)**, with a web interface for analyzing single recordings and comparing two voices.
 
 ![Analyze a voice](docs/screenshot-analyze.png)
 
-## النتائج
+## Results
 
-انقاست الدقة على **أصوات ما سمعها النموذج أبدًا** وقت التدريب. كل مرة نخبّي مجموعة أصوات كاملة عن النموذج، مثل كل ملفات صوت "Laura"، ونختبره عليها (5-fold grouped cross-validation).
+The model is evaluated with **5-fold grouped cross-validation**. Each fold holds out complete voices or sources, such as every clip from one synthetic voice, so the scores measure performance on **voices the model has never heard**.
 
-| | النموذج الأساسي (24 خاصية + شبكة عصبية) | النموذج النهائي |
+| Metric | Baseline (24 features, neural network) | Final model |
 |---|---|---|
-| الدقة | 88.3% | **95.1%** |
+| Accuracy | 88.3% | **95.1%** |
 | ROC-AUC | — | **0.995** |
-| الدقة مع ضوضاء | — | 90.7% |
-| الدقة بعد ضغط MP3 | — | 89.6% |
-| الدقة بجودة مكالمة | — | 92.9% |
+| Accuracy with added noise | — | 90.7% |
+| Accuracy after MP3 compression | — | 89.6% |
+| Accuracy on telephone-band audio | — | 92.9% |
 
-## التشغيل
+## Getting started
 
-احتاجي Python 3.10 أو أحدث. جرّبته على Python 3.13.
+Requires Python 3.10 or later. Tested on Python 3.13.
 
 ```bash
 git clone https://github.com/h7al0x-ctrl/fake-voice-detection.git
 cd fake-voice-detection
 
 python -m venv venv
-venv\Scripts\activate          # على Mac/Linux: source venv/bin/activate
+venv\Scripts\activate          # macOS/Linux: source venv/bin/activate
 pip install -r requirements.txt
 
 python app.py
 ```
 
-المتصفح يفتح تلقائيًا على `http://127.0.0.1:5000`. النموذج المدرّب موجود في مجلد `model/`، فما تحتاجين تدرّبين من جديد.
+The web app opens at `http://127.0.0.1:5000`. A trained model is included in `model/`, so no training is needed to run it.
 
-### فحص ملفات من سطر الأوامر
+### Command-line prediction
 
 ```bash
 python predict.py voice.wav
-python predict.py my_folder/ --csv results.csv
+python predict.py path/to/folder --csv results.csv
 ```
 
-### التدريب من جديد
+### Training
 
-البيانات الصوتية ما ترتفع على GitHub لأن حجمها كبير. رتّبيها كذا:
+The audio dataset is not included in the repository. To retrain, organize your data as follows:
 
 ```
 dataset/
-├── REAL/    ← أصوات بشرية حقيقية
-└── FAKE/    ← أصوات مولّدة بالذكاء الاصطناعي
+├── REAL/    # human speech
+└── FAKE/    # AI-generated speech
 ```
 
-وبعدين شغّلي:
+Then run:
 
 ```bash
 python train.py
 ```
 
-التدريب يطبع الدقة على أصوات جديدة، ويحفظ النموذج في `model/`. الصيغ المدعومة: WAV, MP3, FLAC, OGG.
+The script reports cross-validated metrics and saves the model to `model/`. Supported formats: WAV, MP3, FLAC, OGG.
 
-## الملفات
+## How it works
 
-| الملف | وظيفته |
+1. **Preprocessing.** Audio is converted to 16 kHz mono, trimmed of leading and trailing silence, and peak-normalized. Resampling every clip to the same rate prevents the model from learning recording bandwidth instead of voice characteristics. In the original data, real and fake clips came at different sample rates.
+2. **Feature extraction (228 features).** MFCCs with first- and second-order deltas, LFCCs, spectral centroid, bandwidth, roll-off, flatness and contrast, zero-crossing rate, energy, and pitch statistics. Each feature is summarized by its mean and standard deviation over time.
+3. **Augmentation.** During training, each clip is also used with added noise, speed changes (0.9× and 1.1×), MP3 compression, and a telephone-band filter, so the model holds up on real-world recordings.
+4. **Classifier.** A soft-voting ensemble of Logistic Regression, an RBF-kernel SVM, and Extra Trees, selected after comparing six models.
+5. **Voice comparison.** Cosine similarity between normalized speaker embeddings built from MFCC and pitch statistics. Each voice is also classified as real or fake.
+
+## Project structure
+
+| File | Purpose |
 |---|---|
-| `features.py` | استخراج الخصائص الصوتية. ملف واحد يستخدمه التدريب والتنبؤ عشان ما يصير اختلاف بينهم |
-| `train.py` | التدريب والتقييم، ويحفظ النموذج |
-| `detector.py` | تحميل النموذج والتنبؤ والمقارنة |
-| `app.py` | سيرفر Flask للواجهة |
-| `predict.py` | الفحص من سطر الأوامر |
-| `templates/index.html` | الواجهة |
+| `features.py` | Audio loading, feature extraction, and augmentation, shared by training and inference |
+| `train.py` | Training and grouped cross-validation |
+| `detector.py` | Model loading, prediction, and voice comparison |
+| `app.py` | Flask web server |
+| `predict.py` | Command-line interface |
+| `templates/index.html` | Web interface |
+| `model/` | Trained model and evaluation metrics |
 
-## طريقة العمل
+## Web interface
 
-1. **تجهيز الصوت:** يتحول لقناة وحدة بتردد 16kHz، وينقص الصمت من البداية والنهاية، ويتوحّد مستوى الصوت. توحيد التردد مهم، لأن الأصوات الحقيقية في البيانات بتردد 32kHz والمزيّفة 44.1kHz، فبدونه ممكن النموذج يتعلم جودة الملف بدل الصوت نفسه.
-2. **استخراج 228 خاصية:** MFCC مع التغيّر الأول والثاني، وLFCC، وخصائص طيفية (centroid, bandwidth, rolloff, flatness, contrast)، وZCR، والطاقة، وطبقة الصوت (pitch). ولكل خاصية نحسب المتوسط والانحراف المعياري.
-3. **تكبير البيانات وقت التدريب:** كل ملف تنسوى منه 5 نسخ: ضوضاء، وتسريع، وإبطاء، وضغط MP3، وجودة مكالمة. عشان النموذج يتحمل التسجيلات الحقيقية.
-4. **النموذج:** تصويت (soft voting) بين Logistic Regression وSVM وExtra Trees. اخترته بعد مقارنة 6 نماذج.
-5. **مقارنة صوتين:** تشابه cosine بين "بصمة المتحدث" لكل صوت (MFCC + طبقة الصوت)، ويظهر معها حكم كل صوت لحاله.
-
-## الواجهة
-
-- رفع الملفات أو سحبها وإفلاتها.
-- التسجيل من المايك مباشرة.
-- شكل الموجة الصوتية ومشغّل للاستماع.
-- مؤشر لاحتمال التزييف، وتنبيه إذا النتيجة قريبة من 50/50.
-- مقارنة بين صوتين.
-- سجل بنتائج الجلسة.
+- Upload or drag and drop audio files
+- Record directly from the microphone
+- Waveform preview and playback
+- Fake-probability meter, with a warning for uncertain results
+- Side-by-side comparison of two voices
+- Session history
 
 ![Compare two voices](docs/screenshot-compare.png)
 
-## حدود النموذج
+## Limitations
 
-- **البيانات صغيرة:** 91 صوت حقيقي و92 مزيّف.
-- **كل الأصوات الحقيقية من مصدر واحد (Common Voice):** لذلك التسجيلات الحقيقية من مصادر ثانية، مثل مايك الجوال، ممكن تنفهم أحيانًا إنها مزيّفة.
-- **المولّدات الجديدة صعبة عليه:** أغلب الأخطاء في أصوات مولّد ما شاف النموذج أمثلة منه.
-- **نسبة التشابه في المقارنة تقديرية،** وما تصلح كدليل قاطع على هوية المتحدث.
+- **Small dataset.** The model is trained on 91 real and 92 fake clips.
+- **Single source of real speech.** All real recordings come from Mozilla Common Voice, so real speech from other sources, such as phone recordings, may occasionally be classified as fake.
+- **Unseen generators.** Most errors occur on clips from a TTS generator that was entirely absent from training.
+- **Voice similarity is approximate.** It is not a forensic speaker-verification tool.
 
-## التطوير المستقبلي
+## Future work
 
-- استخدام نماذج صوتية متدرّبة مسبقًا مثل wav2vec2 أو WavLM بدل الخصائص اليدوية.
-- بيانات أكبر وأكثر تنوعًا: أصوات حقيقية من مصادر مختلفة، وأصوات مزيّفة من مولّدات أكثر.
+- Replace hand-crafted features with pretrained speech representations such as wav2vec 2.0 or WavLM.
+- Expand the dataset with real speech from diverse sources and fake speech from more generators.

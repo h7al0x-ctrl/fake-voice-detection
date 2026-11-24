@@ -1,7 +1,7 @@
 """
-predict.py — فحص ملف صوتي أو مجلد كامل من سطر الأوامر
+predict.py - Classify an audio file or a folder of audio files from the command line.
 
-أمثلة:
+Examples:
     python predict.py voice.wav
     python predict.py my_folder/ --csv results.csv
 """
@@ -17,9 +17,9 @@ AUDIO_EXT = {".wav", ".mp3", ".flac", ".ogg"}
 
 
 def main():
-    ap = argparse.ArgumentParser(description="كشف الصوت المزيّف")
-    ap.add_argument("path", help="ملف صوتي أو مجلد")
-    ap.add_argument("--csv", default="results.csv", help="ملف حفظ النتائج")
+    ap = argparse.ArgumentParser(description="Fake voice detection")
+    ap.add_argument("path", help="Audio file or folder")
+    ap.add_argument("--csv", default="results.csv", help="CSV file to append results to")
     args = ap.parse_args()
 
     if os.path.isdir(args.path):
@@ -28,7 +28,7 @@ def main():
     elif os.path.isfile(args.path):
         files = [args.path]
     else:
-        sys.exit(f"❌ ما لقيت {args.path}")
+        sys.exit(f"Not found: {args.path}")
 
     det = Detector()
     new = not os.path.exists(args.csv)
@@ -40,14 +40,13 @@ def main():
             try:
                 r = det.analyze(path)
             except Exception as e:
-                print(f"⚠️  {os.path.basename(path)}: {e}")
+                print(f"SKIPPED {os.path.basename(path)}: {e}")
                 continue
-            note = "  (غير متأكد)" if r["uncertain"] else ""
-            icon = "🔴" if r["result"] == "FAKE" else "🟢"
-            print(f"{icon} {os.path.basename(path)}: {r['result']}  ثقة {r['confidence']}%{note}")
+            note = "  (uncertain)" if r["uncertain"] else ""
+            print(f"{r['result']:4s}  {r['confidence']:5.1f}%  {os.path.basename(path)}{note}")
             w.writerow([datetime.now().isoformat(timespec="seconds"), path, r["result"],
                         r["fake_probability"], r["confidence"], r["uncertain"]])
-    print(f"💾 النتائج محفوظة في {args.csv}")
+    print(f"Results saved to {args.csv}")
 
 
 if __name__ == "__main__":

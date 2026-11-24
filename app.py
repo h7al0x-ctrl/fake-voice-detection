@@ -1,9 +1,9 @@
 """
-app.py — واجهة الويب لكشف الصوت المزيّف
+app.py - Flask web interface for fake voice detection.
 
-التشغيل:
+Usage:
     python app.py
-ثم يفتح المتصفح تلقائيًا على http://127.0.0.1:5000
+The browser opens automatically at http://127.0.0.1:5000
 """
 import os
 import tempfile
@@ -23,7 +23,7 @@ detector = Detector()
 
 
 def save_upload(field):
-    """يحفظ الملف المرفوع في ملف مؤقت باسم فريد (عشان طلبين بنفس الوقت ما يتعارضون)."""
+    """Save an uploaded file to a unique temporary path so concurrent requests do not collide."""
     f = request.files.get(field)
     if f is None or f.filename == "":
         raise ValueError("No file was selected")
@@ -97,5 +97,5 @@ if __name__ == "__main__":
     url = f"http://127.0.0.1:{port}"
     if os.environ.get("WERKZEUG_RUN_MAIN") is None:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-    print(f"🚀 التطبيق شغّال على {url}")
+    print(f"Running on {url}")
     app.run(host="127.0.0.1", port=port, debug=False)
